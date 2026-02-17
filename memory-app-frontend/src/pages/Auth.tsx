@@ -45,7 +45,7 @@ export default function Auth() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { error } = await supabase.auth.verifyOtp({
         phone: cleanedPhone,
         token: cleanedCode,
         type: "sms",

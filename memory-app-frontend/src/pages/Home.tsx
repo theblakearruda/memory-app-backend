@@ -61,7 +61,7 @@ export default function Home({ mode = "home" }: { mode?: "home" | "envos" }) {
   }
 
   function showDate(env: Envelope) {
-    const raw = env.created_at ?? env.date;
+    const raw = env.created_at;
     if (!raw) return "unknown time";
     const dt = new Date(raw);
     if (Number.isNaN(dt.getTime())) return "unknown time";
