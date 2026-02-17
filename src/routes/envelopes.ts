@@ -1,18 +1,13 @@
 import express from "express";
 import dns from "node:dns";
-
-// IMPORTANT: pick the import that matches your file location.
-// option A (if your supabase file is at memory-app-backend/supabase.ts):
-import { supabase } from "../supabase.ts";
-
-// option B (if your supabase file is at memory-app-backend/src/lib/supabase.ts):
-// import { supabase } from "../lib/supabase.ts";
+import { supabase } from "../supabase"; // ✅ src/routes/envelopes.ts -> src/supabase.ts
 
 export const envelopesRouter = express.Router();
 
 // prefer ipv4 (helps random fetch weirdness in some envs)
 dns.setDefaultResultOrder("ipv4first");
 
+// ✅ be consistent: if your DB table is "memories", keep it.
 const TABLE_NAME = "memories";
 
 // if you’re using `date` now but later switch to `created_at`, change this:
@@ -39,6 +34,7 @@ function weatherCodeToText(code: number): string {
   if ([51, 53, 55, 56, 57].includes(code)) return "drizzle";
   if ([61, 63, 65, 66, 67].includes(code)) return "rain";
   if ([71, 73, 75, 77].includes(code)) return "snow";
+  if ([77].includes(code)) return "snow grains";
   if ([80, 81, 82].includes(code)) return "rain showers";
   if ([85, 86].includes(code)) return "snow showers";
   if ([95, 96, 99].includes(code)) return "thunderstorm";
@@ -49,7 +45,9 @@ function cToF(c: number) {
   return Math.round((c * 9) / 5 + 32);
 }
 
-async function geocodeLocation(location: string): Promise<{ lat: number; lon: number } | null> {
+async function geocodeLocation(
+  location: string
+): Promise<{ lat: number; lon: number } | null> {
   const q = encodeURIComponent(location.trim());
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=1&language=en&format=json`;
 
@@ -62,7 +60,9 @@ async function geocodeLocation(location: string): Promise<{ lat: number; lon: nu
 
     const json: any = await res.json();
     const first = json?.results?.[0];
-    if (typeof first?.latitude !== "number" || typeof first?.longitude !== "number") return null;
+    if (typeof first?.latitude !== "number" || typeof first?.longitude !== "number") {
+      return null;
+    }
 
     return { lat: first.latitude, lon: first.longitude };
   } catch {
@@ -106,6 +106,32 @@ async function getWeatherForLocation(location: string): Promise<WeatherResult> {
 }
 
 // -----------------------------
+// legacy date helper (NOW WITH TIME)
+// -----------------------------
+function parseLegacyDate(dateInput: unknown, timeInput?: unknown): string | null {
+  const dateRaw = String(dateInput ?? "").trim();
+  if (!dateRaw) return null;
+
+  const timeRaw = String(timeInput ?? "").trim(); // "HH:mm" (optional)
+
+  const ymd = /^\d{4}-\d{2}-\d{2}$/;
+  const hm = /^\d{2}:\d{2}$/;
+
+  let toParse = dateRaw;
+
+  // if it's just a date like 2000-01-09, attach the time (or default to 12:00)
+  if (ymd.test(dateRaw)) {
+    const t = hm.test(timeRaw) ? timeRaw : "12:00";
+    toParse = `${dateRaw}T${t}:00`;
+  }
+
+  const dt = new Date(toParse);
+  if (Number.isNaN(dt.getTime())) return null;
+
+  return dt.toISOString();
+}
+
+// -----------------------------
 // routes
 // -----------------------------
 
@@ -129,7 +155,7 @@ envelopesRouter.get("/all", async (_req, res) => {
   }
 });
 
-// real create
+// create (normal: date = now)
 envelopesRouter.post("/create", async (req, res) => {
   try {
     const userid = Number(req.body?.userid);
@@ -157,7 +183,8 @@ envelopesRouter.post("/create", async (req, res) => {
           photourl,
           caption,
           location,
-          date: now, // when you switch to created_at, delete this and let postgres handle it
+          date: now,
+          is_legacy: false,
           weather: w.weather,
           weather_code: w.weather_code,
           temp_f: w.temp_f
@@ -175,6 +202,59 @@ envelopesRouter.post("/create", async (req, res) => {
   } catch (err: any) {
     console.error("server crash saving envelope:", err);
     return res.status(500).json({ error: "server crashed saving envelope" });
+  }
+});
+
+// create legacy (custom date + optional time)
+envelopesRouter.post("/legacy-create", async (req, res) => {
+  try {
+    const userid = Number(req.body?.userid);
+    const photourl = String(req.body?.photourl ?? "").trim();
+    const caption = String(req.body?.caption ?? "").trim();
+    const location = String(req.body?.location ?? "").trim();
+
+    // legacy_date + legacy_time
+    const legacyIso = parseLegacyDate(req.body?.legacy_date, req.body?.legacy_time);
+
+    if (!userid || Number.isNaN(userid)) {
+      return res.status(400).json({ error: "valid userid required" });
+    }
+    if (!photourl) {
+      return res.status(400).json({ error: "photourl required" });
+    }
+    if (!legacyIso) {
+      return res.status(400).json({ error: "legacy_date required (YYYY-MM-DD)" });
+    }
+
+    const w = await getWeatherForLocation(location);
+
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .insert([
+        {
+          userid,
+          photourl,
+          caption,
+          location,
+          date: legacyIso,
+          is_legacy: true,
+          weather: w.weather,
+          weather_code: w.weather_code,
+          temp_f: w.temp_f
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("supabase insert error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ message: "legacy envelope saved successfully", envelope: data });
+  } catch (err: any) {
+    console.error("server crash saving legacy envelope:", err);
+    return res.status(500).json({ error: "server crashed saving legacy envelope" });
   }
 });
 

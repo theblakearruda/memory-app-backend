@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { API_URL, STORAGE_BUCKET } from "../lib/config";
 import { supabase } from "../lib/supabaseClient";
 
+import TopBar from "../components/TopBar";
+import Sidebar from "../components/Sidebar";
+
 export default function Create() {
   const nav = useNavigate();
 
@@ -48,7 +51,7 @@ export default function Create() {
 
       const { error: uploadErr } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
         upsert: false,
-        contentType: file.type || "image/jpeg"
+        contentType: file.type || "image/jpeg",
       });
 
       if (uploadErr) throw new Error(uploadErr.message);
@@ -147,8 +150,8 @@ export default function Create() {
           userid: 1,
           photourl: finalUrl,
           caption: caption.trim(),
-          location: location.trim()
-        })
+          location: location.trim(),
+        }),
       });
 
       if (!res.ok) {
@@ -157,7 +160,7 @@ export default function Create() {
       }
 
       // success: go back to home so you see it in the feed
-      nav("/");
+      nav("/home", { replace: true });
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "failed creating envelope");
@@ -167,97 +170,190 @@ export default function Create() {
   }
 
   return (
-    <div>
-      <h1 style={styles.title}>create a memory</h1>
+    <div style={layout.page}>
+      <TopBar />
 
-      <form onSubmit={createEnvelope} style={styles.form}>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => {
-            const file = e.target.files?.[0] || null;
-            setPhotoFile(file);
-            if (file) setPhotoUrl("");
-          }}
-          style={styles.input}
-          disabled={!canUseSupabase}
-        />
+      <div style={layout.body}>
+        <Sidebar />
 
-        <input
-          value={photoUrl}
-          onChange={(e) => setPhotoUrl(e.target.value)}
-          placeholder="or paste photo URL"
-          style={styles.input}
-          disabled={!!photoFile}
-        />
+        <div style={layout.main}>
+          <div style={layout.mainInner}>
+            <div style={header.row}>
+              <h1 style={header.title}>create a memory</h1>
+              <button type="button" style={header.backBtn} onClick={() => nav("/home")}>
+                ← back
+              </button>
+            </div>
 
-        <input
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-          placeholder="caption"
-          style={styles.input}
-        />
+            <form onSubmit={createEnvelope} style={styles.form}>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setPhotoFile(file);
+                  if (file) setPhotoUrl("");
+                }}
+                style={styles.input}
+                disabled={!canUseSupabase}
+              />
 
-        <button
-          type="button"
-          onClick={fillLocationFromGPS}
-          disabled={locLoading}
-          style={{ ...styles.button, opacity: locLoading ? 0.7 : 1 }}
-        >
-          {locLoading ? "getting location…" : "use my location"}
-        </button>
+              <input
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+                placeholder="or paste photo URL"
+                style={styles.input}
+                disabled={!!photoFile}
+              />
 
-        {locStatus && <div style={{ opacity: 0.75, fontSize: 12 }}>{locStatus}</div>}
+              <input
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="caption"
+                style={styles.input}
+              />
 
-        <input
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          placeholder="location"
-          style={styles.input}
-        />
+              <button
+                type="button"
+                onClick={fillLocationFromGPS}
+                disabled={locLoading}
+                style={{ ...styles.button, opacity: locLoading ? 0.7 : 1 }}
+              >
+                {locLoading ? "getting location…" : "use my location"}
+              </button>
 
-        <button disabled={loadingCreate || uploading} style={styles.button}>
-          {loadingCreate ? "saving..." : uploading ? "uploading..." : "save envelope"}
-        </button>
+              {locStatus && <div style={{ opacity: 0.75, fontSize: 12 }}>{locStatus}</div>}
 
-        {!canUseSupabase && (
-          <div style={{ opacity: 0.75, fontSize: 12 }}>
-            supabase client not ready — check env vars and restart vite.
+              <input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="location"
+                style={styles.input}
+              />
+
+              <button disabled={loadingCreate || uploading} style={styles.primaryBtn}>
+                {loadingCreate ? "saving..." : uploading ? "uploading..." : "save envelope"}
+              </button>
+
+              {!canUseSupabase && (
+                <div style={{ opacity: 0.75, fontSize: 12 }}>
+                  supabase client not ready — check env vars and restart vite.
+                </div>
+              )}
+            </form>
+
+            {error && <div style={styles.error}>{error}</div>}
           </div>
-        )}
-      </form>
+        </div>
 
-      {error && <div style={{ marginTop: 16, color: "#ff9b9b" }}>{error}</div>}
+        <div style={layout.rightRail} />
+      </div>
     </div>
   );
 }
 
+/** layout matches Home.tsx vibe */
+const layout: Record<string, React.CSSProperties> = {
+  page: {
+    position: "fixed",
+    inset: 0,
+    background: "#f0f2f5",
+    overflow: "auto",
+  },
+  body: {
+    display: "grid",
+    gridTemplateColumns: "280px 1fr 320px",
+    gap: 12,
+    padding: 12,
+    paddingTop: 70,
+    boxSizing: "border-box",
+  },
+  main: { minHeight: "calc(100vh - 90px)" },
+  mainInner: {
+    background: "rgba(255,255,255,0.65)",
+    border: "1px solid rgba(0,0,0,0.06)",
+    borderRadius: 14,
+    padding: 14,
+    boxSizing: "border-box",
+  },
+  rightRail: {
+    position: "sticky",
+    top: 70,
+    height: "calc(100vh - 70px)",
+    overflow: "auto",
+    padding: 12,
+    boxSizing: "border-box",
+  },
+};
+
+const header: Record<string, React.CSSProperties> = {
+  row: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 22,
+    margin: 0,
+    fontWeight: 900,
+    color: "#111827",
+    textTransform: "lowercase",
+  },
+  backBtn: {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(0,0,0,0.10)",
+    background: "white",
+    cursor: "pointer",
+    fontWeight: 900,
+    color: "#111827",
+  },
+};
+
 const styles: Record<string, CSSProperties> = {
-  title: { fontSize: 28, marginBottom: 14 },
   form: {
     display: "flex",
     flexDirection: "column",
     gap: 12,
     padding: 16,
-    border: "1px solid rgba(255,255,255,0.15)",
+    border: "1px solid rgba(0,0,0,0.08)",
     borderRadius: 12,
-    background: "rgba(255,255,255,0.05)"
+    background: "white",
   },
   input: {
     padding: 12,
-    borderRadius: 8,
-    border: "1px solid rgba(255,255,255,0.2)",
-    background: "rgba(0,0,0,0.3)",
-    color: "white"
+    borderRadius: 10,
+    border: "1px solid rgba(0,0,0,0.14)",
+    background: "#ffffff",
+    color: "#111827",
+    fontWeight: 700,
+    outline: "none",
   },
   button: {
     padding: 12,
     borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "rgba(255,255,255,0.12)",
-    color: "white",
-    fontWeight: 800,
+    border: "1px solid rgba(0,0,0,0.14)",
+    background: "#f3f4f6",
+    color: "#111827",
+    fontWeight: 900,
     cursor: "pointer",
-    width: "fit-content"
-  }
+    width: "fit-content",
+  },
+  primaryBtn: {
+    padding: 12,
+    borderRadius: 10,
+    border: "none",
+    background: "#111827",
+    color: "white",
+    fontWeight: 1000,
+    cursor: "pointer",
+    width: "fit-content",
+  },
+  error: {
+    marginTop: 14,
+    color: "#b91c1c",
+    fontWeight: 900,
+  },
 };
